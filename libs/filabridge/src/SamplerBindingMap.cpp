@@ -24,18 +24,24 @@
 
 namespace filament {
 
-void SamplerBindingMap::populate(const SamplerInterfaceBlock* perMaterialSib,
+void SamplerBindingMap::populate(uint8_t variantKey, const SamplerInterfaceBlock* perMaterialSib,
             const char* materialName) {
     uint8_t offset = 0;
     size_t maxSamplerIndex = backend::MAX_SAMPLER_COUNT - 1;
     bool overflow = false;
     for (uint8_t blockIndex = 0; blockIndex < filament::BindingPoints::COUNT; blockIndex++) {
         mSamplerBlockOffsets[blockIndex] = offset;
-        filament::SamplerInterfaceBlock const* sib;
+        filament::SamplerInterfaceBlock const* sib = nullptr;
+        filament::SamplerInterfaceBlock temp;
         if (blockIndex == filament::BindingPoints::PER_MATERIAL_INSTANCE) {
             sib = perMaterialSib;
         } else {
-            sib = filament::SibGenerator::getSib(blockIndex);
+            SibGenerator::OptionalSamplerInterfaceBlock s =
+                filament::SibGenerator::getSib(blockIndex, variantKey);
+            if (s.has_value()) {
+                temp = s.value();
+                sib = &temp;
+            }
         }
         if (sib) {
             auto sibFields = sib->getSamplerInfoList();
@@ -62,11 +68,17 @@ void SamplerBindingMap::populate(const SamplerInterfaceBlock* perMaterialSib,
         utils::slog.e << utils::io::endl;
         offset = 0;
         for (uint8_t blockIndex = 0; blockIndex < filament::BindingPoints::COUNT; blockIndex++) {
-            filament::SamplerInterfaceBlock const* sib;
+            filament::SamplerInterfaceBlock const* sib = nullptr;
+            filament::SamplerInterfaceBlock temp;
             if (blockIndex == filament::BindingPoints::PER_MATERIAL_INSTANCE) {
                 sib = perMaterialSib;
             } else {
-                sib = filament::SibGenerator::getSib(blockIndex);
+                SibGenerator::OptionalSamplerInterfaceBlock s =
+                    filament::SibGenerator::getSib(blockIndex, variantKey);
+                if (s.has_value()) {
+                    temp = s.value();
+                    sib = &temp;
+                }
             }
             if (sib) {
                 auto sibFields = sib->getSamplerInfoList();

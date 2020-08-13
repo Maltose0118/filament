@@ -23,14 +23,19 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include <optional>
+
 namespace filament {
 
 class SamplerInterfaceBlock;
 
 class SibGenerator {
 public:
-    static SamplerInterfaceBlock const& getPerViewSib() noexcept;
-    static SamplerInterfaceBlock const* getSib(uint8_t bindingPoint) noexcept;
+
+    using OptionalSamplerInterfaceBlock = std::optional<SamplerInterfaceBlock>;
+
+    static SamplerInterfaceBlock getPerViewSib(uint8_t variantKey) noexcept;
+    static OptionalSamplerInterfaceBlock getSib(uint8_t bindingPoint, uint8_t variantKey) noexcept;
 };
 
 struct PerViewSib {

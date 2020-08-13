@@ -16,21 +16,27 @@
 
 #include "private/filament/SibGenerator.h"
 
+#include "private/filament/Variant.h"
+
 #include <backend/DriverEnums.h>
 
 #include <private/filament/SamplerInterfaceBlock.h>
 
 namespace filament {
 
-SamplerInterfaceBlock const& SibGenerator::getPerViewSib() noexcept {
+SamplerInterfaceBlock SibGenerator::getPerViewSib(uint8_t variantKey) noexcept {
     using Type = SamplerInterfaceBlock::Type;
     using Format = SamplerInterfaceBlock::Format;
     using Precision = SamplerInterfaceBlock::Precision;
 
+    Variant v(variantKey);
+
+    const backend::SamplerFormat shadowFormat = v.hasVsm() ? Format::FLOAT : Format::SHADOW;
+
     // TODO: ideally we'd want this to be constexpr, this is a compile time structure
-    static SamplerInterfaceBlock sib = SamplerInterfaceBlock::Builder()
+    SamplerInterfaceBlock sib = SamplerInterfaceBlock::Builder()
             .name("Light")
-            .add("shadowMap",     Type::SAMPLER_2D_ARRAY,   Format::SHADOW, Precision::MEDIUM)
+            .add("shadowMap",     Type::SAMPLER_2D_ARRAY,   shadowFormat,   Precision::MEDIUM)
             .add("records",       Type::SAMPLER_2D,         Format::UINT,   Precision::MEDIUM)
             .add("froxels",       Type::SAMPLER_2D,         Format::UINT,   Precision::MEDIUM)
             .add("iblDFG",        Type::SAMPLER_2D,         Format::FLOAT,  Precision::MEDIUM)
@@ -42,19 +48,20 @@ SamplerInterfaceBlock const& SibGenerator::getPerViewSib() noexcept {
 
     assert(sib.getSize() == PerViewSib::SAMPLER_COUNT);
 
+    // Does this do a copy?
     return sib;
 }
 
-SamplerInterfaceBlock const* SibGenerator::getSib(uint8_t bindingPoint) noexcept {
+SibGenerator::OptionalSamplerInterfaceBlock SibGenerator::getSib(uint8_t bindingPoint, uint8_t variantKey) noexcept {
     switch (bindingPoint) {
         case BindingPoints::PER_VIEW:
-            return &getPerViewSib();
+            return getPerViewSib(variantKey);
         case BindingPoints::PER_RENDERABLE:
-            return nullptr;
+            return {};
         case BindingPoints::LIGHTS:
-            return nullptr;
+            return {};
         default:
-            return nullptr;
+            return {};
     }
 }
 
