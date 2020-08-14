@@ -486,7 +486,7 @@ void VulkanDriver::createRenderTargetR(Handle<HwRenderTarget> rth,
     depthStencil[1].layer = stencil.layer;
 
     auto renderTarget = construct_handle<VulkanRenderTarget>(mHandleMap, rth, mContext,
-            width, height, colorTargets, depthStencil);
+            width, height, samples, colorTargets, depthStencil, mStagePool);
     mDisposer.createDisposable(renderTarget, [this, rth] () {
         destruct_handle<VulkanRenderTarget>(mHandleMap, rth);
     });
@@ -924,11 +924,10 @@ void VulkanDriver::beginRenderPass(Handle<HwRenderTarget> rth, const RenderPassP
     VulkanFboCache::RenderPassKey rpkey = {
         .depthLayout = depth.layout,
         .depthFormat = depth.format,
-        .flags = {
-            .clear = params.flags.clear,
-            .discardStart = discardStart,
-            .discardEnd = params.flags.discardEnd
-        },
+        .clear = params.flags.clear,
+        .discardStart = discardStart,
+        .discardEnd = params.flags.discardEnd,
+        .samples = rt->getSamples(),
         .subpassMask = params.subpassMask
     };
     for (int i = 0; i < MRT::TARGET_COUNT; i++) {
@@ -942,9 +941,17 @@ void VulkanDriver::beginRenderPass(Handle<HwRenderTarget> rth, const RenderPassP
     // Create the VkFramebuffer or fetch it from cache.
     VulkanFboCache::FboKey fbkey { .renderPass = renderPass };
     for (int i = 0, j = 0; i < MRT::TARGET_COUNT; i++) {
-        if (rt->getColor(i).format != VK_FORMAT_UNDEFINED) {
-            fbkey.color[j++] = rt->getColor(i).view;
+        if (rt->getColor(i).format == VK_FORMAT_UNDEFINED) {
+            continue;
         }
+        if (rpkey.samples == 1) {
+            fbkey.color[j] = rt->getColor(i).view;
+            fbkey.resolve[j] = VK_NULL_HANDLE;
+        } else {
+            fbkey.color[j] = rt->getMsaaColor(i).view;
+            fbkey.resolve[j] = rt->getColor(i).view;
+        }
+        ++j;
     }
     if (depth.format != VK_FORMAT_UNDEFINED) {
         fbkey.depth = depth.view;
@@ -1322,6 +1329,9 @@ void VulkanDriver::draw(PipelineState pipelineState, Handle<HwRenderPrimitive> r
 #endif
 
     // Update the VK raster state.
+
+    const VulkanRenderTarget* rt = mCurrentRenderTarget;
+
     mContext.rasterState.depthStencil = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
         .depthTestEnable = VK_TRUE,
@@ -1329,6 +1339,12 @@ void VulkanDriver::draw(PipelineState pipelineState, Handle<HwRenderPrimitive> r
         .depthCompareOp = getCompareOp(rasterState.depthFunc),
         .depthBoundsTestEnable = VK_FALSE,
         .stencilTestEnable = VK_FALSE,
+    };
+
+    mContext.rasterState.multisampling = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        .rasterizationSamples = (VkSampleCountFlagBits) rt->getSamples(),
+        .alphaToCoverageEnable = rasterState.alphaToCoverage,
     };
 
     mContext.rasterState.blending = {
@@ -1349,7 +1365,6 @@ void VulkanDriver::draw(PipelineState pipelineState, Handle<HwRenderPrimitive> r
     vkraster.depthBiasConstantFactor = depthOffset.constant;
     vkraster.depthBiasSlopeFactor = depthOffset.slope;
 
-    VulkanRenderTarget* rt = mCurrentRenderTarget;
     mContext.rasterState.getColorTargetCount = rt->getColorTargetCount();
 
     VulkanBinder::ProgramBundle shaderHandles = program->bundle;
